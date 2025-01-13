@@ -49,17 +49,13 @@ class CDKT(MetaModel):
         self.get_kernel_type(kwargs['kernel'])
         self.get_loss(kwargs['loss'])
         self.get_negmean(kwargs['mean'])
-        self.get_steps(kwargs['mean'])
+        self.get_steps(kwargs['steps'])
         self.get_temperature(kwargs['tau'])
-        
-    def set_forward_loss(self, batch):
-        STEPS = 1 if self.STEPS == 'Annealing' else self.STEPS
-        
+    
+    def set_forward(self, batch):
         x, _ = batch
-        print(x.size())
-        self.n_query = x.size(0) - self.n_support
+        self.n_query = x.size(0) // self.n_way - self.n_support
         # self.n_way = x.size(0)
-        print(f"{self.n_way} {self.n_support} {self.n_query}")
         x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
         y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
         x_train = x_all.to(self.device)
@@ -68,13 +64,38 @@ class CDKT(MetaModel):
         self.model.train()
         self.feature_extractor.train()
         
-        
-        z_train = self.feature_extractor.forward(x_train)
-        if self.normalize: z_train = F.normalize(z_train, p=2, dim=1)
+        z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
+        if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
         
         output = self.model(z_train)
         
-        acc = accuracy(output, y_train)
+        correct_this, count_this = self.correct(x)
+        acc = correct_this / count_this * 100
+        
+        return output, acc
+    
+    def set_forward_loss(self, batch):
+        STEPS = 1 if self.STEPS == 'Annealing' else self.STEPS
+        
+        x, _ = batch
+        self.n_query = x.size(0) // self.n_way - self.n_support
+        # self.n_way = x.size(0)
+        x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
+        y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
+        x_train = x_all.to(self.device)
+        y_train = y_all
+        
+        self.model.train()
+        self.feature_extractor.train()
+        
+        z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
+        if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
+        
+        output = self.model(z_train)
+        
+        correct_this, count_this = self.correct(x)
+        acc = correct_this / count_this * 100
+        
         if self.LOSS == 'ELBO':
             loss = self.MeanFieldELBO(y=y_train, output=output, steps=STEPS, REQUIRES_GRAD=False, temperature=self.TEMPERATURE)
         else:
@@ -134,14 +155,14 @@ class CDKT(MetaModel):
             self.model.eval()
             self.feature_extractor.eval()
             
-            z_support = self.feature_extractor.forward(x_support).detach()
+            z_support = torch.flatten(self.feature_extractor.forward(x_support), start_dim=1).detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = self.feature_extractor.forward(x_query).detach()
+            z_query = torch.flatten(self.feature_extractor.forward(x_query), start_dim=1).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []
@@ -169,7 +190,7 @@ class CDKT(MetaModel):
             self.model.train()
             self.feature_extractor.train()
             
-            z_train = self.feature_extractor.forward(x_train)
+            z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
             if(self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
 
             output = self.model(z_train)
@@ -213,23 +234,23 @@ class CDKT(MetaModel):
 
     def correct(self, x):
         ##Dividing input x in query and support set
-        x_support = x[:,:self.n_support,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[2:]).to(self.device)
+        x_support = x[:self.n_support * self.n_way,:,:,:].contiguous().view(self.n_way * (self.n_support), *x.size()[1:]).to(self.device)
         y_support = torch.from_numpy(np.repeat(range(self.n_way), self.n_support)).to(self.device)
-        x_query = x[:,self.n_support:,:,:,:].contiguous().view(self.n_way * (self.n_query), *x.size()[2:]).to(self.device)
+        x_query = x[self.n_support * self.n_way:,:,:,:].contiguous().view(self.n_way * (self.n_query), *x.size()[1:]).to(self.device)
         y_query = np.repeat(range(self.n_way), self.n_query)
 
         with torch.no_grad():
             self.model.eval()
             self.feature_extractor.eval()
             
-            z_support = self.feature_extractor.forward(x_support).detach()
+            z_support = torch.flatten(self.feature_extractor.forward(x_support), start_dim=1).detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = self.feature_extractor.forward(x_query).detach()
+            z_query = torch.flatten(self.feature_extractor.forward(x_query), start_dim=1).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []

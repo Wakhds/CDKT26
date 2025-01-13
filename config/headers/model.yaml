@@ -1,5 +1,5 @@
-epoch: 50
-test_epoch: 5
+epoch: 400
+test_epoch: 50
 
 parallel_part:
   - emb_func
@@ -8,7 +8,7 @@ pretrain_path: ~
 resume: False
 # few shot settings
 way_num: 5
-shot_num: 1
+shot_num: 5
 query_num: 15
 test_way: ~ # use ~ -> test_* = *_num
 test_shot: ~

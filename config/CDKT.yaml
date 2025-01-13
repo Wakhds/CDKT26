@@ -6,12 +6,6 @@ includes:
   - headers/optimizer.yaml
   - backbones/Conv64F.yaml
 
-shot_num: 1
-query_num: 15
-episode_size: 2
-train_episode: 100
-test_episode: 100
-
 optimizer:
   name: Adam
   kwargs:
