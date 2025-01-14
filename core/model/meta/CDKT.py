@@ -38,7 +38,6 @@ class CDKT(MetaModel):
         self.outputscale_list = None
         self.iteration = 0
         self.writer=None
-        self.feature_extractor = Conv64F()
         self.kernel_type = kernel_type
         self.get_model_likelihood_mll() #Init model, likelihood
         
@@ -51,44 +50,46 @@ class CDKT(MetaModel):
         self.get_negmean(kwargs['mean'])
         self.get_steps(kwargs['steps'])
         self.get_temperature(kwargs['tau'])
+        
+        # print(self.emb_func)
+        print(self.model)
+        
     
     def set_forward(self, batch):
         x, _ = batch
         self.n_query = x.size(0) // self.n_way - self.n_support
         # self.n_way = x.size(0)
-        x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
-        y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
-        x_train = x_all.to(self.device)
-        y_train = y_all
+        # x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
+        # y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
+        # x_train = x_all
+        # y_train = y_all
         
-        self.model.train()
-        self.feature_extractor.train()
+        # z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
+        # if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
         
-        z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
-        if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
-        
-        output = self.model(z_train)
+        # output = self.model(z_train)
         
         correct_this, count_this = self.correct(x)
         acc = correct_this / count_this * 100
         
-        return output, acc
+        return None, acc
     
     def set_forward_loss(self, batch):
         STEPS = 1 if self.STEPS == 'Annealing' else self.STEPS
         
-        x, _ = batch
+        x, y = batch
         self.n_query = x.size(0) // self.n_way - self.n_support
+        
         # self.n_way = x.size(0)
-        x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
+        x_all = x.contiguous().to(self.device)
         y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
-        x_train = x_all.to(self.device)
+        x_train = x_all
         y_train = y_all
         
         self.model.train()
-        self.feature_extractor.train()
+        self.emb_func.train()
         
-        z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
+        z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
         if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
         
         output = self.model(z_train)
@@ -153,16 +154,16 @@ class CDKT(MetaModel):
 
         with torch.no_grad():
             self.model.eval()
-            self.feature_extractor.eval()
+            self.emb_func.eval()
             
-            z_support = torch.flatten(self.feature_extractor.forward(x_support), start_dim=1).detach()
+            z_support = torch.flatten(self.emb_func.forward(x_support), start_dim=1).detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = torch.flatten(self.feature_extractor.forward(x_query), start_dim=1).detach()
+            z_query = torch.flatten(self.emb_func.forward(x_query), start_dim=1).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []
@@ -188,9 +189,9 @@ class CDKT(MetaModel):
             y_train = y_all
 
             self.model.train()
-            self.feature_extractor.train()
+            self.emb_func.train()
             
-            z_train = torch.flatten(self.feature_extractor.forward(x_train), start_dim=1)
+            z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
             if(self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
 
             output = self.model(z_train)
@@ -218,7 +219,7 @@ class CDKT(MetaModel):
 
             try:
                 torch.nan_to_num(loss).backward() 
-                if not all([torch.isfinite(p.grad).all() for p in self.feature_extractor.parameters()]):
+                if not all([torch.isfinite(p.grad).all() for p in self.emb_func.parameters()]):
                     print("Nan in the gradients, skipping this iteration.")
                 else:
                     optimizer.step()
@@ -241,16 +242,16 @@ class CDKT(MetaModel):
 
         with torch.no_grad():
             self.model.eval()
-            self.feature_extractor.eval()
+            self.emb_func.eval()
             
-            z_support = torch.flatten(self.feature_extractor.forward(x_support), start_dim=1).detach()
+            z_support = torch.flatten(self.emb_func.forward(x_support), start_dim=1).detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = torch.flatten(self.feature_extractor.forward(x_query), start_dim=1).detach()
+            z_query = torch.flatten(self.emb_func.forward(x_query), start_dim=1).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []

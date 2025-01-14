@@ -67,6 +67,11 @@ def get_augment_method(
                 transforms.RandomHorizontalFlip(),
                 transforms.ColorJitter(**CJ_DICT),
             ]
+        elif config["augment_method"] == "CDKTAugment":
+            trfms_list = [
+                transforms.RandomResizedCrop(size=config["image_size"]),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4),
+            ]
         else:
             trfms_list = get_default_image_size_trfms(config["image_size"])
             trfms_list += [

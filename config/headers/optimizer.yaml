@@ -3,11 +3,10 @@ optimizer:
   name: Adam
   kwargs:
     lr: 0.01
-  other: ~
-    # emb_func: 0.001 # define lr OR
-    # another_part:    # define multi params
-    #   lr: 0.1
-    #   weight_decay: 0.5
+  other: 
+    model: 0.0001
+    emb_func: 0.001
+    NEGMEAN: 0.0001
 
 
 # lr_scheduler info

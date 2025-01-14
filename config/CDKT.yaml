@@ -9,8 +9,11 @@ includes:
 optimizer:
   name: Adam
   kwargs:
-    lr: 1e-3
-  other: ~
+    lr: 0.0001
+  other: 
+    # model: 0.0001
+    emb_func: 0.001
+    # NEGMEAN: 0.0001
 
 backbone:
   name: Conv64F
