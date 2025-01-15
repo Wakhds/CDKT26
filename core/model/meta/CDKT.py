@@ -1,3 +1,8 @@
+# This code is mainly adapted from revisit-logistic-softmax
+# Repo: https://github.com/keanson/revisit-logistic-softmax/tree/master?tab=readme-ov-file
+# The original repository doesn't hava a specified license
+# please refer to the repository or contact the author for permission
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -31,7 +36,7 @@ class CDKT(MetaModel):
         super(CDKT, self).__init__(**kwargs)
         self.n_support = n_support
         self.n_way = n_way
-        self.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
         ## GP parameters
         self.leghtscale_list = None
         self.noise_list = None
@@ -52,22 +57,13 @@ class CDKT(MetaModel):
         self.get_temperature(kwargs['tau'])
         
         # print(self.emb_func)
+        # print(self.TEMPERATURE)
+        print(self.device)
         print(self.model)
         
     
     def set_forward(self, batch):
         x, _ = batch
-        self.n_query = x.size(0) // self.n_way - self.n_support
-        # self.n_way = x.size(0)
-        # x_all = x.contiguous().view(self.n_way * (self.n_support + self.n_query) , *x.size()[1:]).to(self.device)
-        # y_all = Variable(torch.from_numpy(np.repeat(range(self.n_way), self.n_query+self.n_support)).to(self.device))
-        # x_train = x_all
-        # y_train = y_all
-        
-        # z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
-        # if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
-        
-        # output = self.model(z_train)
         
         correct_this, count_this = self.correct(x)
         acc = correct_this / count_this * 100
@@ -75,9 +71,10 @@ class CDKT(MetaModel):
         return None, acc
     
     def set_forward_loss(self, batch):
+        
         STEPS = 1 if self.STEPS == 'Annealing' else self.STEPS
         
-        x, y = batch
+        x, _ = batch
         self.n_query = x.size(0) // self.n_way - self.n_support
         
         # self.n_way = x.size(0)
@@ -89,20 +86,22 @@ class CDKT(MetaModel):
         self.model.train()
         self.emb_func.train()
         
-        z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
+        
+        z_train = self.emb_func.forward(x_train)
         if (self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
         
         output = self.model(z_train)
         
-        correct_this, count_this = self.correct(x)
-        acc = correct_this / count_this * 100
+        # correct_this, count_this = self.correct(x)
+        # acc = correct_this / count_this * 100
+        acc = 0
         
         if self.LOSS == 'ELBO':
             loss = self.MeanFieldELBO(y=y_train, output=output, steps=STEPS, REQUIRES_GRAD=False, temperature=self.TEMPERATURE)
         else:
             loss = self.MeanFieldPredictiveLoglikelihood(y_train[:self.n_support * self.n_way], z_train[:self.n_support * self.n_way], y_train, z_train, steps=STEPS, REQUIRES_GRAD=False, times=1000, tau=self.TEMPERATURE)
         
-        return output, acc, torch.nan_to_num(loss)
+        return output, acc, loss
         
     def get_steps(self, steps):
         if steps == -1:
@@ -156,14 +155,14 @@ class CDKT(MetaModel):
             self.model.eval()
             self.emb_func.eval()
             
-            z_support = torch.flatten(self.emb_func.forward(x_support), start_dim=1).detach()
+            z_support = self.emb_func.forward(x_support).detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = torch.flatten(self.emb_func.forward(x_query), start_dim=1).detach()
+            z_query = self.emb_func.forward(x_query).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []
@@ -191,7 +190,7 @@ class CDKT(MetaModel):
             self.model.train()
             self.emb_func.train()
             
-            z_train = torch.flatten(self.emb_func.forward(x_train), start_dim=1)
+            z_train = self.emb_func.forward(x_train)
             if(self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
 
             output = self.model(z_train)
@@ -239,26 +238,27 @@ class CDKT(MetaModel):
         y_support = torch.from_numpy(np.repeat(range(self.n_way), self.n_support)).to(self.device)
         x_query = x[self.n_support * self.n_way:,:,:,:].contiguous().view(self.n_way * (self.n_query), *x.size()[1:]).to(self.device)
         y_query = np.repeat(range(self.n_way), self.n_query)
-
+        
         with torch.no_grad():
             self.model.eval()
             self.emb_func.eval()
             
-            z_support = torch.flatten(self.emb_func.forward(x_support), start_dim=1).detach()
+            o = self.emb_func.forward(x_support)
+            z_support = o.detach()
             if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
             support_outputs = self.model(z_support)
             
             # to be optimized (steps should not be fixed)
             support_mu, support_sigma = self.predict_mean_field(y_support, support_outputs, steps=30)
             
-            z_query = torch.flatten(self.emb_func.forward(x_query), start_dim=1).detach()
+            z_query = self.emb_func.forward(x_query).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             
             q_posterior_list = []
             for c in range(len(self.model.kernels)):
                 posterior = self.model.kernels[c].predict(z_query, z_support, support_mu[c], support_sigma[c])
                 q_posterior_list.append(posterior)
-            
+        
             y_pred = self.montecarlo(q_posterior_list, times=10000, temperature=self.TEMPERATURE)     
             y_pred = y_pred.cpu().numpy() 
             top1_correct = np.sum(y_pred == y_query)
@@ -288,7 +288,8 @@ class CDKT(MetaModel):
     def predict_mean_field(self, y, output, steps=10):
         temperature = self.TEMPERATURE
         with torch.no_grad():
-            y = torch.tensor(y).long().detach().to(self.device)
+            # y = torch.tensor(y).long().detach().to(self.device)
+            y = y.clone().long().detach().to(self.device)
             # initiate params
             # N = self.n_support * self.n_way
             N = len(y) 
@@ -353,7 +354,7 @@ class CDKT(MetaModel):
         return torch.argmax(avg, dim=0)                
     
     def MeanFieldELBO(self, y, output, steps=2, REQUIRES_GRAD=False, temperature=1):
-        y = torch.tensor(y).long()
+        y = y.clone().detach().long()
         N = (self.n_support + self.n_query) * self.n_way
         C = self.n_way
         tilde_f = torch.empty(C, N, requires_grad=REQUIRES_GRAD).to(self.device)

@@ -82,7 +82,7 @@ class Trainer(object):
             print("learning rate: {}".format(self.scheduler.get_last_lr()))
             train_acc = self._train(epoch_idx)
             print(" * Acc@1 {:.3f} ".format(train_acc))
-            if ((epoch_idx + 1) % self.val_per_epoch) == 0:
+            if ((epoch_idx + 1) % self.val_per_epoch) == 0 or epoch_idx == 0:
                 print("============ Validation on the val set ============")
                 val_acc = self._validate(epoch_idx, is_test=False)
                 print(
@@ -172,7 +172,7 @@ class Trainer(object):
 
             # compute gradients
             self.optimizer.zero_grad()
-            loss.backward()
+            torch.nan_to_num(loss).backward()
             # nn.utils.clip_grad_norm_(self.model.parameters(), 2.0)
             # for param in self.model.parameters():
             #     if (param.grad != param.grad).float().sum() != 0:  # nan detected
@@ -215,7 +215,7 @@ class Trainer(object):
                 )
                 print(info_str)
             end = time()
-
+        
         return meter.avg("acc1")
 
     def _validate(self, epoch_idx, is_test=False):

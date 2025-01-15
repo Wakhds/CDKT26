@@ -11,8 +11,8 @@ optimizer:
   kwargs:
     lr: 0.0001
   other: 
-    # model: 0.0001
-    emb_func: 0.001
+    model: 1e-4
+    emb_func: 1e-3
     # NEGMEAN: 0.0001
 
 backbone:
@@ -33,4 +33,4 @@ classifier:
     loss: 'ELBO'
     mean: 0.0
     steps: 2
-    tau: 0.2 # temparature
+    tau: 0.5 # temparature 0.2 for CUB and 0.5 for MINIimagenet
